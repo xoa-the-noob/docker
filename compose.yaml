@@ -1,0 +1,43 @@
+name: tahiyaenv
+
+services:
+  influxdb:
+    container_name: influxdb2-tenv
+    image: influxdb:2
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb2_data:/var/lib/influxdb2
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: admin123
+      DOCKER_INFLUXDB_INIT_ORG: my-org
+      DOCKER_INFLUXDB_INIT_BUCKET: my-bucket
+      DOCKER_INFLUXDB_INIT_RETENTION: 0
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: my-super-secret-token
+
+  grafana:
+    container_name: grafana-tenv
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - influxdb
+
+  nodered:
+    container_name: nodered-tenv
+    image: nodered/node-red
+    ports:
+      - "1880:1880"
+    volumes:
+      - node_red_data:/data
+    depends_on:
+      - influxdb
+
+volumes:
+  influxdb2_data:
+  grafana_data:
+  node_red_data:
