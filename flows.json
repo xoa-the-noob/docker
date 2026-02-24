@@ -1,0 +1,149 @@
+[
+    {
+        "id": "f6f2187d.f17ca8",
+        "type": "tab",
+        "label": "Flow 1",
+        "disabled": false,
+        "info": ""
+    },
+    {
+        "id": "3cc11d24.ff01a2",
+        "type": "comment",
+        "z": "f6f2187d.f17ca8",
+        "name": "WARNING: please check you have started this container with a volume that is mounted to /data\\n otherwise any flow changes are lost when you redeploy or upgrade the container\\n (e.g. upgrade to a more recent node-red docker image).\\n  If you are using named volumes you can ignore this warning.\\n Double click or see info side panel to learn how to start Node-RED in Docker to save your work",
+        "info": "\nTo start docker with a bind mount volume (-v option), for example:\n\n```\ndocker run -it -p 1880:1880 -v /home/user/node_red_data:/data --name mynodered nodered/node-red\n```\n\nwhere `/home/user/node_red_data` is a directory on your host machine where you want to store your flows.\n\nIf you do not do this then you can experiment and redploy flows, but if you restart or upgrade the container the flows will be disconnected and lost. \n\nThey will still exist in a hidden data volume, which can be recovered using standard docker techniques, but that is much more complex than just starting with a named volume as described above.",
+        "x": 350,
+        "y": 80,
+        "wires": []
+    },
+    {
+        "id": "bc0ec28737cf2e07",
+        "type": "mqtt in",
+        "z": "f6f2187d.f17ca8",
+        "name": "",
+        "topic": "#",
+        "qos": "2",
+        "datatype": "auto-detect",
+        "broker": "3fec6728f790dae6",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 390,
+        "y": 500,
+        "wires": [
+            [
+                "6babc7d29933e266"
+            ]
+        ]
+    },
+    {
+        "id": "6babc7d29933e266",
+        "type": "function",
+        "z": "f6f2187d.f17ca8",
+        "name": "function 1",
+        "func": "Function1:\n\n\n// ==========================================\n// SINGLE PROCESSOR: DECODE & FORMAT\n// ==========================================\n\n// 1. Get the Data\nvar uplink = msg.payload.uplink_message;\nvar deviceId = msg.payload.end_device_ids.device_id;\n\n\n// Safety Check\nif (!uplink || !uplink.frm_payload) return null;\n\n\nvar final_values = {};\n\n\n// 2. DECODING LOGIC\n// A. If it's an Air Sensor (AM102), it's often pre-decoded. Use that.\nif (uplink.decoded_payload && Object.keys(uplink.decoded_payload).length > 0) {\n    final_values = uplink.decoded_payload;\n}\n// B. If it's a Soil Sensor (EM500), we MUST decode it manually.\nelse {\n    var bytes = Buffer.from(uplink.frm_payload, 'base64');\n    var i = 0;\n    while (i < bytes.length) {\n        var channel_id = bytes[i++];\n        var channel_type = bytes[i++]; // Skip the type byte\n\n\n        // Battery (Channel 1)\n        if (channel_id === 0x01) {\n            final_values.battery = bytes[i++];\n        }\n        // Temperature (Channel 3)\n        else if (channel_id === 0x03) {\n            var val = bytes[i] | (bytes[i + 1] << 8);\n            if (val > 0x7FFF) val -= 0x10000;\n            final_values.temperature = val / 10;\n            i += 2;\n        }\n        // Moisture (Channel 4)\n        else if (channel_id === 0x04) {\n            final_values.moisture = bytes[i++] / 2;\n            // Fix for 2-byte moisture alignment\n            if (i < bytes.length && bytes[i] === 0x00 && bytes[i - 1] === 0x00) i++;\n        }\n        // Conductivity (Channel 5)\n        else if (channel_id === 0x05) {\n            final_values.conductivity = bytes[i] | (bytes[i + 1] << 8);\n            i += 2;\n        }\n        else { i += 2; } // Safety skip\n    }\n}\n\n\n// 3. DATABASE FORMATTING\nvar sensorType = \"unknown\";\nif (deviceId.includes(\"soil\") || deviceId.includes(\"em500\")) sensorType = \"soil_sensor\";\nelse if (deviceId.includes(\"am102\")) sensorType = \"air_sensor\";\nelse if (deviceId.includes(\"water\")) sensorType = \"water_sensor\";\nelse if (deviceId.includes(\"em300\") || deviceId.includes(\"mcs\")) sensorType = \"magnet_sensor\";\n\n// FIX: Set measurement explicitly\nmsg.measurement = \"farm_metrics\";\n\n// FIX: Use standard [Fields, Tags] format\nmsg.payload = [\n    final_values,\n    {\n        device: deviceId,\n        type: sensorType\n    }\n];\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 580,
+        "y": 500,
+        "wires": [
+            [
+                "6a2a7210840f6638",
+                "1ecfb02ffedf87e4"
+            ]
+        ]
+    },
+    {
+        "id": "6a2a7210840f6638",
+        "type": "debug",
+        "z": "f6f2187d.f17ca8",
+        "name": "debug 1",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 820,
+        "y": 500,
+        "wires": []
+    },
+    {
+        "id": "1ecfb02ffedf87e4",
+        "type": "influxdb out",
+        "z": "f6f2187d.f17ca8",
+        "influxdb": "0fd91ebd4e19d520",
+        "name": "",
+        "measurement": "",
+        "precision": "",
+        "retentionPolicy": "",
+        "database": "database",
+        "precisionV18FluxV20": "ms",
+        "retentionPolicyV18Flux": "",
+        "org": "my-org",
+        "bucket": "bucket1",
+        "x": 890,
+        "y": 600,
+        "wires": []
+    },
+    {
+        "id": "3fec6728f790dae6",
+        "type": "mqtt-broker",
+        "name": "",
+        "broker": "eu1.cloud.thethings.network",
+        "port": 1883,
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": 4,
+        "keepalive": 60,
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "0fd91ebd4e19d520",
+        "type": "influxdb",
+        "hostname": "127.0.0.1",
+        "port": 8086,
+        "protocol": "http",
+        "database": "database",
+        "name": "",
+        "usetls": false,
+        "tls": "",
+        "influxdbVersion": "2.0",
+        "url": "http://influxdb:8086",
+        "timeout": 10,
+        "rejectUnauthorized": true
+    },
+    {
+        "id": "b0119208804022c6",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-contrib-influxdb": "0.7.0"
+        }
+    }
+]
